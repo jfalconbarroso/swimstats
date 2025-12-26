@@ -1,0 +1,8 @@
+streamlit
+requests
+pdfplumber
+numpy
+pandas
+matplotlib
+python-dateutil
+reportlab
