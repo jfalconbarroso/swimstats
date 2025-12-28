@@ -20,7 +20,7 @@ def main():
         print("  -", e)
 
     print("\nFirst 30 rows:")
-    for r in rows[:30]:
+    for r in rows:
         print(json.dumps(r, ensure_ascii=False))
 
 if __name__ == "__main__":

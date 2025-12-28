@@ -24,6 +24,15 @@ TIME_AT_END = re.compile(
     r")\s*$"
 )
 
+# Matches a time token anywhere in the line (not anchored).
+# We prefer tokens containing ':' or '.' to avoid mistaking trailing point columns like '19,00' for a time.
+TIME_TOKEN_ANY = re.compile(
+    r"\d+:\d{2}(?:[.,]\s*\d{1,2})?"  # mm:ss or mm:ss.xx
+    r"|\d{1,3}[.]\s*\d{1,2}"         # ss.xx with dot
+    r"|\d{1,3}[,]\s*\d{1,2}"         # ss,xx with comma (fallback)
+)
+
+
 POS_PREFIX = re.compile(r"^\d{1,3}\.\s+")
 
 
@@ -149,6 +158,15 @@ def parse_splash_results(pdf_bytes: bytes, category_path: str) -> List[Dict]:
                     # Some Splash reports use '-' (or an en/em dash) as a placeholder (e.g., '34.73 -').
                     # Strip it so the time token remains at end-of-line for TIME_AT_END.
                     ln = re.sub(r"\s*[-–—]\s*$", "", ln)
+
+                    # Some PDFs append extra columns after the swimmer's time (e.g., points like '19,00' and placeholders '- -').
+                    # Truncate the line at the last time-like token so TIME_AT_END can match reliably.
+                    _matches = list(TIME_TOKEN_ANY.finditer(ln))
+                    if _matches:
+                        _preferred = [m for m in _matches if (":" in m.group(0) or "." in m.group(0))]
+                        _m = (_preferred[-1] if _preferred else _matches[-1])
+                        ln = ln[:_m.end()].rstrip()
+
                     mt = TIME_AT_END.search(ln)
                     if not mt:
                         continue

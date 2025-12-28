@@ -193,7 +193,7 @@ def get_all_times(
     return [float(r[0]) for r in conn.execute(q, params).fetchall()]
 
 
-st.set_page_config(page_title="Natación — Plots", layout="wide")
+st.set_page_config(page_title="Swimstats — Análisis", layout="wide")
 st.title("Swimstats — Análisis")
 
 with st.sidebar:
