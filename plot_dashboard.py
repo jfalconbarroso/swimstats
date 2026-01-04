@@ -269,7 +269,26 @@ if not events:
     st.stop()
 
 st.subheader("Selección de eventos")
-selected_events = st.multiselect("Eventos", options=events, default=[events[0]])
+
+# ---- Multi-select helpers ----
+# Persist selection across reruns and allow quick "select all" for the current swimmer.
+# Ensure session state stays in sync if the available event list changes.
+_state_key = "selected_events"
+if _state_key not in st.session_state:
+    st.session_state[_state_key] = [events[0]]
+
+# Drop any stale selections not present in the current options
+st.session_state[_state_key] = [e for e in st.session_state[_state_key] if e in events] or [events[0]]
+
+btn_cols = st.columns([3, 2, 5])
+with btn_cols[0]:
+    if st.button("Seleccionar todos", use_container_width=True):
+        st.session_state[_state_key] = list(events)
+with btn_cols[1]:
+    if st.button("Limpiar", use_container_width=True):
+        st.session_state[_state_key] = []
+
+selected_events = st.multiselect("Eventos", options=events, key=_state_key)
 
 scope_label = "Todo el histórico" if not viz_tags else " + ".join(viz_tags)
 
