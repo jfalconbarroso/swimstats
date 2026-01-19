@@ -2,6 +2,8 @@ import io
 import re
 import unicodedata
 from typing import List, Dict, Optional, Tuple
+from collections import Counter
+from datetime import datetime
 
 import pdfplumber
 
@@ -9,6 +11,40 @@ from .stats import time_to_seconds
 from .events import extract_event_and_category
 
 PLACE_DATE_LINE = re.compile(r"^(?P<place>.+),\s*(?P<date>\d{1,2}/\d{1,2}/\d{4})\s*$", re.IGNORECASE)
+DATE_ANY = re.compile(r"\b(?P<date>\d{1,2}/\d{1,2}/\d{4})\b")
+
+def _to_iso_date(date_str: Optional[str]) -> Optional[str]:
+    """Convert dd/mm/yyyy to yyyy-mm-dd. Returns None if parsing fails."""
+    if not date_str:
+        return None
+    try:
+        return datetime.strptime(date_str.strip(), "%d/%m/%Y").date().isoformat()
+    except Exception:
+        return None
+
+def _extract_meet_date(lines: List[str]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract meet date from PDF text lines.
+
+    Strategy:
+    1) Prefer a 'Place, dd/mm/yyyy' line (common Splash Meet Manager header).
+    2) Otherwise, pick the most frequent dd/mm/yyyy occurring in the first ~50 lines.
+    """
+    # 1) Place, date
+    for ln in lines[:50]:
+        m = PLACE_DATE_LINE.match(ln.strip())
+        if m:
+            d = m.group("date").strip()
+            return d, _to_iso_date(d)
+    # 2) Any date token frequency
+    dates = []
+    for ln in lines[:50]:
+        for m in DATE_ANY.finditer(ln):
+            dates.append(m.group("date"))
+    if not dates:
+        return None, None
+    d = Counter(dates).most_common(1)[0][0]
+    return d, _to_iso_date(d)
 
 EVENT_LINE = re.compile(
     r"^PRUEBA\s+(?P<num>\d+)\s+"
@@ -116,6 +152,7 @@ def parse_splash_results(pdf_bytes: bytes, category_path: str) -> List[Dict]:
     meet_name = None
     meet_place = None
     meet_date = None
+    meet_date_iso = None
     current_event = None
     current_event_num = None
     current_sex = None
@@ -126,14 +163,19 @@ def parse_splash_results(pdf_bytes: bytes, category_path: str) -> List[Dict]:
             text = page.extract_text() or ""
             lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
 
-            for ln in lines[:10]:
+            # Attempt to extract meet header info early (first page typically has it)
+            for ln in lines[:20]:
                 if meet_name is None and ("LIGA" in ln.upper() or "CONTROL" in ln.upper() or "CAMPEON" in ln.upper()):
                     meet_name = ln.strip()
                 m = PLACE_DATE_LINE.match(ln)
                 if m and meet_date is None:
                     meet_place = m.group("place").strip()
                     meet_date = m.group("date").strip()
+                    meet_date_iso = _to_iso_date(meet_date)
 
+            if meet_date is None:
+                # Fallback: infer date from common date tokens (e.g., '11/10/2025 Resultados')
+                meet_date, meet_date_iso = _extract_meet_date(lines)
             for ln0 in lines:
                 for ln in split_multi_swimmer_lines(ln0):
                     m = EVENT_LINE.match(ln.strip())
@@ -188,6 +230,7 @@ def parse_splash_results(pdf_bytes: bytes, category_path: str) -> List[Dict]:
                         "meet_name": meet_name,
                         "meet_place": meet_place,
                         "meet_date": meet_date,
+                        "meet_date_iso": meet_date_iso,
                         "event_num": current_event_num,
                         "sex": current_sex,
                         "event": current_event or "UNKNOWN",

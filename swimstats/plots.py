@@ -72,17 +72,12 @@ def plot_combined_event(
         orientation="horizontal",
         alpha=0.4
     )
-
-    ax_hist.set_xlabel("Nº nadadores")
+    ax_hist.set_xlabel("Nº marcas")
 
     # Cosmetic cleanup
     plt.setp(ax_hist.get_yticklabels(), visible=False)
     ax_hist.tick_params(axis="y", length=0)
     ax_hist.tick_params(axis="x", length=0)
-
-
-
-
 
     # ax.set_title(title)
     ax.set_xlabel("Fecha")

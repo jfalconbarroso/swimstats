@@ -12,7 +12,7 @@ PLACE_DATE_LINE = re.compile(r"^(?P<place>.+),\s*(?P<date>\d{1,2}/\d{1,2}/\d{4})
 
 EVENT_LINE = re.compile(
     r"^PRUEBA\s+(?P<num>\d+)\s+"
-    r"(?P<sex>FEM\.|MASC\.)\s*,?\s*"
+    r"(?P<sex>(?:FEM|MASC)(?:\.)?|FEMENINO|MASCULINO|FEM\.|MASC\.|FEMEN\.|MASCUL\.|Fem\.|Masc\.|Fem|Masc)\s*,?\s*"
     r"(?P<rest>.+?)\s*$",
     re.IGNORECASE
 )
@@ -23,6 +23,15 @@ TIME_AT_END = re.compile(
     r"|\d{1,3}[.,]\s*\d{1,2}"        # ss.xx (allow spaces)
     r")\s*$"
 )
+
+# Matches a time token anywhere in the line (not anchored).
+# We prefer tokens containing ':' or '.' to avoid mistaking trailing point columns like '19,00' for a time.
+TIME_TOKEN_ANY = re.compile(
+    r"\d+:\d{2}(?:[.,]\s*\d{1,2})?"  # mm:ss or mm:ss.xx
+    r"|\d{1,3}[.]\s*\d{1,2}"         # ss.xx with dot
+    r"|\d{1,3}[,]\s*\d{1,2}"         # ss,xx with comma (fallback)
+)
+
 
 POS_PREFIX = re.compile(r"^\d{1,3}\.\s+")
 
@@ -143,7 +152,21 @@ def parse_splash_results(pdf_bytes: bytes, category_path: str) -> List[Dict]:
 
                     # Remove trailing points / deltas (often formatted like times, e.g. '8,00' or '+0,72')
                     ln = re.sub(r"\s+\+\d{1,3},\d{2}\s*$", "", ln)
+                    # Remove trailing integer points (e.g., AQUA/FINA points) after the time
+                    ln = re.sub(r"\s+\d{1,5}\s*$", "", ln)
                     ln = re.sub(r"\s+\d{1,4},\d{2}\s*$", "", ln)
+                    # Some Splash reports use '-' (or an en/em dash) as a placeholder (e.g., '34.73 -').
+                    # Strip it so the time token remains at end-of-line for TIME_AT_END.
+                    ln = re.sub(r"\s*[-–—]\s*$", "", ln)
+
+                    # Some PDFs append extra columns after the swimmer's time (e.g., points like '19,00' and placeholders '- -').
+                    # Truncate the line at the last time-like token so TIME_AT_END can match reliably.
+                    _matches = list(TIME_TOKEN_ANY.finditer(ln))
+                    if _matches:
+                        _preferred = [m for m in _matches if (":" in m.group(0) or "." in m.group(0))]
+                        _m = (_preferred[-1] if _preferred else _matches[-1])
+                        ln = ln[:_m.end()].rstrip()
+
                     mt = TIME_AT_END.search(ln)
                     if not mt:
                         continue
